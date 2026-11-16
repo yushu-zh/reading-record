@@ -1,0 +1,23 @@
+{
+  "name": "reading-record-local",
+  "main": "apps/worker/src/index.ts",
+  "compatibility_date": "2026-11-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api", "/api/*"]
+  },
+  "vars": {
+    "ORIGIN": "http://localhost:8787",
+    "ALLOW_LOOPBACK_ALIAS": "true"
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "reading-record-local",
+    "database_id": "00000000-0000-4000-8000-000000000001",
+    "migrations_dir": "./migrations"
+  }]
+}
