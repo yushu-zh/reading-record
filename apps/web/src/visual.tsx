@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Profile, ProgressBook } from '../../../packages/contracts';
 
 function PlaceholderAvatar() {
@@ -48,30 +48,22 @@ export function progressGeometry(book: ProgressBook, weekStart: string) {
     markers.unshift({page:book.weekOpeningPage,color:'#989b98'});
   }
   if (markers.at(-1)?.page !== book.totalPages) markers.push({ page:book.totalPages,color:'#989b98' });
-  let minGap = book.totalPages;
-  for (let i=1; i<markers.length; i++) minGap = Math.min(minGap,markers[i].page-markers[i-1].page);
-  return { segments,markers, requiredHeight: Math.ceil(25 * book.totalPages / minGap) };
+  return { segments,markers };
 }
 export function Progress({ book, weekStart, onCheck }: { book: ProgressBook; weekStart:string; onCheck?: () => void }) {
-  const { segments,markers,requiredHeight } = progressGeometry(book,weekStart);
+  const { segments,markers } = progressGeometry(book,weekStart);
   const position = (page:number) => (page / book.totalPages * 100) + '%';
-  const zoomed = requiredHeight > 310;
-  const view = useRef<HTMLDivElement>(null);
-  // Positions use the same containing block even when the chart is scrolled.
+  const actionStart = position(book.currentPage < book.totalPages ? book.currentPage : book.beforeToday);
   return <div className="progress-group">
-    {zoomed && <button className="progress-jump" type="button" onClick={() => {
-      const node = view.current;
-      if (node) node.scrollTop = Math.max(0, node.scrollHeight * (book.currentPage / book.totalPages) - node.clientHeight / 2);
-    }}>定位进度</button>}
-    <div className={'progress-viewport' + (zoomed ? ' zoomed' : '')} ref={view} tabIndex={zoomed ? 0 : undefined}>
-      <div className="progress-scale" style={zoomed ? {height:requiredHeight} : undefined}
+    <div className="progress-viewport">
+      <div className="progress-scale"
         aria-label={`已读 ${book.currentPage} / ${book.totalPages} 页`}>
         <div className="track">
           <span className="unread" style={{ top:position(book.currentPage) }} />
           {segments.map(segment => <span className="segment" key={segment.end}
             style={{ top:position(segment.start),height:position(segment.end-segment.start),backgroundColor:segment.color }} />)}
           {onCheck && <button aria-label="记录阅读页码" className="unread-action"
-            style={{top:position(book.currentPage<book.totalPages ? book.currentPage : book.beforeToday)}}
+            style={{top:`min(${actionStart}, calc(100% - 24px))`}}
             onClick={onCheck}/> }
         </div>
         {markers.map(marker => <span className="page-marker" key={marker.page}
