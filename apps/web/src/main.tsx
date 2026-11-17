@@ -16,69 +16,21 @@ type Modal = { kind:'book'; book?:Book } | { kind:'check'; bookId:string; draft:
   | { kind:'friend' } | { kind:'avatar' };
 const tabs = [{id:'home',label:'首页'},{id:'stats',label:'统计'},{id:'me',label:'我的'}] as const;
 
-function useShellUpdate() {
-  const [update,setUpdate] = useState<ServiceWorker|null>(null);
-  useEffect(() => {
-    if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
-    let cleanup: (()=>void) | undefined;
-    let cancelled = false;
-    navigator.serviceWorker.register('/sw.js').then(registration=>{
-      if (cancelled) return;
-      let installing: ServiceWorker | null = null;
-      function showUpdate() {
-        if (registration.waiting) {
-          setUpdate(registration.waiting);
-        } else if (installing?.state==='installed' && registration.active && registration.active!==installing) {
-          setUpdate(installing);
-        }
-      }
-      function observeInstallation() {
-        installing?.removeEventListener('statechange',showUpdate);
-        installing=registration.installing;
-        installing?.addEventListener('statechange',showUpdate);
-        showUpdate();
-      }
-      registration.addEventListener('updatefound',observeInstallation);
-      observeInstallation();
-      // A force reload bypasses the active worker and can leave this page without a controller.
-      if (registration.active && !navigator.serviceWorker.controller) void registration.update().catch(()=>undefined);
-      cleanup=()=>{
-        registration.removeEventListener('updatefound',observeInstallation);
-        installing?.removeEventListener('statechange',showUpdate);
-      };
-    }).catch(()=>undefined);
-    return ()=>{cancelled=true;cleanup?.();};
-  },[]);
-  return update;
-}
 function App() {
   const me = useQuery({ queryKey:['me'],queryFn:({signal})=>api<Me>('/me','GET',undefined,signal) });
-  const update = useShellUpdate();
   const authRequired = me.error instanceof RequestError && me.error.status===401;
   useEffect(()=>{
     if (!authRequired) return;
     query.removeQueries({ queryKey:['home'] });
     query.removeQueries({ queryKey:['books'] });
   },[authRequired]);
-  return <>
-    {me.data && !authRequired ? <Workspace key={me.data.id} me={me.data}/>
+  return me.data && !authRequired ? <Workspace key={me.data.id} me={me.data}/>
       : authRequired ? <SignIn signedIn={()=>void me.refetch()}/>
         : <main className="auth-view"><div className="panel auth-card">
           <h1>阅读打卡</h1>{me.isPending ? <p role="status">正在加载…</p> : <>
             <Feedback message={errorText(me.error)}/>
             <button className="primary" onClick={()=>void me.refetch()}>重试</button></>}
-        </div></main>}
-    {update && <button className="update-notice" onClick={()=>{
-      if (update.state==='activated') { location.reload(); return; }
-      function reloadWhenActive() {
-        if (update?.state!=='activated') return;
-        update.removeEventListener('statechange',reloadWhenActive);
-        location.reload();
-      }
-      update.addEventListener('statechange',reloadWhenActive);
-      update.postMessage('activate');
-    }}>有新版本，点击刷新</button>}
-  </>;
+        </div></main>;
 }
 
 function Workspace({me}: {me:Me}) {
@@ -284,3 +236,6 @@ function FriendForm({me,refresh}: {me:Me; refresh:(bound:boolean)=>Promise<void>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={query}><App/></QueryClientProvider></StrictMode>);
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.register('/sw.js').catch(()=>undefined);
+}

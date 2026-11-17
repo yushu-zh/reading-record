@@ -5,16 +5,21 @@ import { Icon } from './visual';
 
 export function Sheet({ title, close, children }: { title:string; close:()=>void; children:ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const node = dialog.current;
     node?.showModal();
+    heading.current?.focus();
     return () => node?.close();
   },[]);
   return <dialog ref={dialog} className="sheet" aria-labelledby="sheet-title"
     onCancel={event => { event.preventDefault(); close(); }}
     onClick={event => { if (event.target === event.currentTarget) close(); }}>
     <div className="sheet-body">
-      <header><h2 id="sheet-title">{title}</h2><button className="icon-button" aria-label="关闭" onClick={close}><Icon name="close"/></button></header>
+      <header>
+        <h2 ref={heading} id="sheet-title" tabIndex={-1}>{title}</h2>
+        <button type="button" className="sheet-close" aria-label="关闭" onClick={close}><Icon name="close"/></button>
+      </header>
       {children}
     </div>
   </dialog>;

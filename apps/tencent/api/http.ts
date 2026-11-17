@@ -1,8 +1,9 @@
 import { Hono, type Context } from 'hono';
+import type { Database } from './database';
 
 export type Session = { digest: string; userId: string };
 export type Env = {
-  Bindings: { DB: D1Database; ORIGIN: string; ALLOW_LOOPBACK_ALIAS?: string };
+  Bindings: { DB: Database; ORIGIN: string };
   Variables: { session: Session };
 };
 export type ApiContext = Context<Env>;
@@ -40,5 +41,3 @@ export const secret = (size = 32) => encode(crypto.getRandomValues(new Uint8Arra
 export async function digest(value: string) {
   return encode(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))));
 }
-export const unix = "unixepoch('now')";
-export const today = "date('now', '+8 hours')";

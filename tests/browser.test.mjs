@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { chromium, devices } from 'playwright';
-import { localWorker } from './runtime.mjs';
+import { localApp } from './runtime.mjs';
 
 let runtime,browser;
 const password = 'correct-horse-reading-42';
@@ -12,18 +12,18 @@ const button = (page,name)=>page.getByRole('button',{name,exact:true});
 const shelf = (page,name)=>page.getByRole('region',{name,exact:true});
 const dialog = page=>page.getByRole('dialog');
 before(async()=>{
-  runtime=await localWorker();
+  runtime=await localApp({listen:true});
   const executablePath=process.env.READING_TEST_CHROME || (existsSync(chrome) ? chrome : undefined);
   browser=await chromium.launch({executablePath});
 });
 after(async()=>{await browser?.close();await runtime?.close();});
 
-async function reader(alias=false) {
+async function reader() {
   const context=await browser.newContext({...devices['Desktop Chrome'],viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   const page=await context.newPage();
   page.setDefaultTimeout(6500);
   const cdp=await context.newCDPSession(page);
-  await page.goto(alias ? runtime.origin.replace('localhost','127.0.0.1') : runtime.origin);
+  await page.goto(runtime.origin);
   await button(page,'登录').waitFor();
   return { context,page,cdp };
 }
@@ -64,8 +64,27 @@ async function createBook(page,title,total,initial=0) {
   await shelf(page,'我').getByRole('heading',{name:title}).waitFor();
 }
 
+test('登录输入框聚焦时保留圆角',async()=>{
+  const {context,page}=await reader();
+  try {
+    const nickname=page.getByLabel('昵称');
+    const passwordField=page.getByLabel('密码',{exact:true});
+    const borderRadius=field=>field.evaluate(async element=>{
+      await Promise.all(element.getAnimations().map(animation=>animation.finished));
+      return getComputedStyle(element).borderRadius;
+    });
+    const nicknameRadius=await borderRadius(nickname);
+    const passwordRadius=await borderRadius(passwordField);
+    await nickname.click();
+    assert.equal(await borderRadius(nickname),nicknameRadius);
+    await page.keyboard.press('Tab');
+    assert.equal(await passwordField.evaluate(element=>element.matches(':focus-visible')),true);
+    assert.equal(await borderRadius(passwordField),passwordRadius);
+  } finally { await context.close(); }
+});
+
 test('两位读者以密码注册、绑定后直接比较，断网后手动提交', {timeout:65000}, async()=>{
-  const alice=await reader(), bob=await reader(true);
+  const alice=await reader(), bob=await reader();
   try {
     await register(alice.page,'阿青');
     await register(bob.page,'小森','x');
@@ -81,7 +100,7 @@ test('两位读者以密码注册、绑定后直接比较，断网后手动提�
     await photo.waitFor();
     await alice.page.waitForFunction(()=>document.querySelector('img[src*="/api/v1/avatars/"]')?.naturalWidth===256);
     const photoPath=await photo.getAttribute('src');
-    const bobOrigin=runtime.origin.replace('localhost','127.0.0.1');
+    const bobOrigin=runtime.origin;
     assert.equal((await bob.page.request.get(bobOrigin+photoPath)).status(),404);
     await createBook(alice.page,'三体',300,80);
     const card = shelf(alice.page,'我');
@@ -112,7 +131,7 @@ test('两位读者以密码注册、绑定后直接比较，断网后手动提�
     assert.equal(await alice.page.getByLabel('累计页码').inputValue(),'130');
     await alice.context.setOffline(false);
     await button(alice.page,'提交打卡').waitFor();
-    assert.equal(await runtime.db.prepare('SELECT count(*) AS n FROM check_ins').first('n'),0);
+    assert.equal(await runtime.db.prepare('SELECT count(*)::integer AS n FROM check_ins').first('n'),0);
     await button(alice.page,'提交打卡').click();
     await dialog(alice.page).waitFor({state:'hidden'});
     await shelf(alice.page,'我').getByText('130',{exact:true}).waitFor();
@@ -254,7 +273,7 @@ test('周一至周日的色块和页码箭头配色一致',async()=>{
 
 
 test('Service Worker 接管后仍能刷新首页及离线加载静态页面',async()=>{
-  const {context,page}=await reader(true);
+  const {context,page}=await reader();
   try {
     await page.waitForFunction(()=>Boolean(navigator.serviceWorker.controller));
     const cached=await page.evaluate(async()=>{

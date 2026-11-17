@@ -43,9 +43,12 @@ avatars.get('/:id',async c=>{
   const userId=id(c), target=c.req.param('id');
   const row=await c.env.DB.prepare(`WITH friend AS (${authorizedFriend})
     SELECT jpeg FROM profile_avatars WHERE user_id=? AND (user_id=? OR user_id=(SELECT id FROM friend))`)
-    .bind(userId,target,userId).first<{jpeg:number[]}>();
+    .bind(userId,target,userId).first<{jpeg:number[] | string}>();
   if (!row) missing();
-  return c.body(Uint8Array.from(row.jpeg),200,{
+  const bytes = typeof row.jpeg === 'string'
+    ? Uint8Array.from(Buffer.from(row.jpeg.slice(2),'hex'))
+    : Uint8Array.from(row.jpeg);
+  return c.body(bytes,200,{
     'Content-Type':'image/jpeg','Cross-Origin-Resource-Policy':'same-origin',
   });
 });

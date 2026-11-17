@@ -5,19 +5,10 @@ import { reading } from './reading';
 import { home } from './home';
 import { avatars, updateAvatar } from './avatars';
 
-const loopbackNames = new Set(['localhost','127.0.0.1','[::1]']);
-
-function checkOrigin(c:ApiContext) {
-  let configured:URL;
-  try { configured = new URL(c.env.ORIGIN); }
-  catch { throw new ApiError(503,'origin_configuration','服务地址配置有误，请联系管理员。'); }
-  const requested = new URL(c.req.url);
-  const actual = c.req.header('Origin');
-  const localAlias = c.env.ALLOW_LOOPBACK_ALIAS === 'true' &&
-    loopbackNames.has(configured.hostname) && loopbackNames.has(requested.hostname) &&
-    requested.protocol === configured.protocol && requested.port === configured.port;
-  if (actual === requested.origin && (actual === configured.origin || localAlias)) return;
-  throw new ApiError(403,'origin',`请从 ${configured.origin} 打开应用后再提交。当前页面的访问地址与服务配置不匹配。`);
+function checkOrigin(c: ApiContext) {
+  const configured = c.env.ORIGIN;
+  if (c.req.header('Origin') === configured && new URL(c.req.url).origin === configured) return;
+  throw new ApiError(403,'origin',`请从 ${configured} 打开应用后再提交。当前页面的访问地址与服务配置不匹配。`);
 }
 
 const app = router();

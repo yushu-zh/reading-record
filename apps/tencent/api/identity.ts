@@ -2,14 +2,16 @@ import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
 import type { Profile } from '../../../packages/contracts';
-import { ApiError, body, conflict, decode, digest, encode, id, invalid, router, secret, unix, type ApiContext, type Env } from './http';
+import { unixNow, type Database } from './database';
+import { ApiError, body, conflict, decode, digest, encode, id, invalid, router, secret, type ApiContext, type Env } from './http';
 
 const sessionCookie = '__Host-reading-password-session';
 const cookie = { path:'/', secure:true, httpOnly:true, sameSite:'Lax' } as const;
 const sessionLifetime = 30 * 86400;
 type Credential = { user_id:string; salt:string; password_hash:string };
 const credentialFields = 'p.user_id,p.salt,p.password_hash';
-const activeSession = `EXISTS (SELECT 1 FROM sessions WHERE digest=? AND user_id=? AND revoked_at IS NULL AND expires_at>${unix})`;
+const activeSession =
+  `EXISTS (SELECT 1 FROM sessions WHERE digest=? AND user_id=? AND revoked_at IS NULL AND expires_at>${unixNow})`;
 const activeCredential = 'EXISTS (SELECT 1 FROM password_credentials WHERE user_id=? AND password_hash=?)';
 
 function unauthorized(): never {
@@ -22,8 +24,8 @@ export function session() {
   return createMiddleware<Env>(async (c,next) => {
     const token = getCookie(c,sessionCookie);
     if (!token) unauthorized();
-    const row = await c.env.DB.prepare(`SELECT digest,user_id AS userId FROM sessions
-      WHERE digest=? AND purpose='password' AND revoked_at IS NULL AND expires_at>${unix}`)
+    const row = await c.env.DB.prepare(`SELECT digest,user_id AS "userId" FROM sessions
+      WHERE digest=? AND purpose='password' AND revoked_at IS NULL AND expires_at>${unixNow}`)
       .bind(await digest(token)).first<Env['Variables']['session']>();
     if (!row) unauthorized();
     c.set('session',row);
@@ -31,31 +33,33 @@ export function session() {
   });
 }
 export const avatarVersionSql = (user:string) => `(SELECT version FROM profile_avatars WHERE user_id=${user})`;
-export const profileColumns = `u.id, u.nickname, u.avatar, ${avatarVersionSql('u.id')} AS avatarVersion`;
-export function profile(db: D1Database, userId: string) {
-  return db.prepare(`SELECT ${profileColumns},u.friend_code AS friendCode FROM users u WHERE u.id=?`)
+export const profileColumns = `u.id, u.nickname, u.avatar, ${avatarVersionSql('u.id')} AS "avatarVersion"`;
+export function profile(db: Database, userId: string) {
+  return db.prepare(`SELECT ${profileColumns},u.friend_code AS "friendCode" FROM users u WHERE u.id=?`)
     .bind(userId).first<Profile & {friendCode:string}>();
 }
-export function resolveFriendCode(db: D1Database, code: string) {
+export function resolveFriendCode(db: Database, code: string) {
   return db.prepare('SELECT u.id FROM users u JOIN password_credentials p ON p.user_id=u.id WHERE u.friend_code=?')
     .bind(code).first<string>('id');
 }
 
 async function limit(c: ApiContext, action: string, account?: string) {
   const db = c.env.DB;
-  const ip = await digest(c.req.header('CF-Connecting-IP') ?? 'local');
+  const unix = unixNow;
+  const sharedSource = await digest('local');
   const increment = (scope:string,max:number) => db.prepare(`INSERT INTO auth_attempts VALUES (?,${unix}/300,1)
-    ON CONFLICT(scope,window) DO UPDATE SET attempts=attempts+1 WHERE attempts<? RETURNING attempts`).bind(scope,max);
-  const attempts = [increment(`password:${action}:ip:${ip}`,action==='register' ? 10 : 30)];
+    ON CONFLICT(scope,"window") DO UPDATE SET attempts=auth_attempts.attempts+1 WHERE auth_attempts.attempts<? RETURNING attempts`).bind(scope,max);
+  const attempts = [increment(`password:${action}:ip:${sharedSource}`,action==='register' ? 10 : 30)];
   if (account) attempts.push(increment(`password:${action}:account:${await digest(account)}`,10));
   if ((await db.batch(attempts)).some(result=>!result.results.length)) {
     throw new ApiError(429,'rate_limit','尝试次数过多，请稍后再试。');
   }
   if (Math.random()<0.05) {
-    c.executionCtx.waitUntil(db.batch([
-      db.prepare(`DELETE FROM auth_attempts WHERE rowid IN (SELECT rowid FROM auth_attempts WHERE window<${unix}/300-2 LIMIT 100)`),
-      db.prepare(`DELETE FROM sessions WHERE rowid IN (SELECT rowid FROM sessions WHERE expires_at<=${unix} LIMIT 100)`),
-    ]).then(()=>undefined,()=>undefined));
+    void db.batch([
+      db.prepare(`DELETE FROM auth_attempts WHERE (scope,"window") IN (
+        SELECT scope,"window" FROM auth_attempts WHERE "window"<${unix}/300-2 LIMIT 100)`),
+      db.prepare(`DELETE FROM sessions WHERE digest IN (SELECT digest FROM sessions WHERE expires_at<=${unix} LIMIT 100)`),
+    ]).catch(() => undefined);
   }
 }
 
@@ -86,7 +90,8 @@ function matchesPassword(password:string,credential:Credential|null) {
 function signIn(c:ApiContext,token:string) {
   setCookie(c,sessionCookie,token,{...cookie,maxAge:sessionLifetime});
 }
-function insertSession(db:D1Database,token:string,userId:string) {
+function insertSession(db:Database,token:string,userId:string) {
+  const unix=unixNow;
   return db.prepare(`INSERT INTO sessions(digest,user_id,purpose,expires_at,verified_at)
     VALUES (?,?,'password',${unix}+?,${unix})`).bind(token,userId,sessionLifetime);
 }
@@ -119,6 +124,7 @@ identity.post('/login',async c=>{
   const current=await db.prepare(`SELECT ${credentialFields} FROM password_credentials p WHERE p.nickname_key=?`).bind(key).first<Credential>();
   if (!matchesPassword(password,current) || !current) rejected();
   const token=secret();
+  const unix=unixNow;
   const result=await db.prepare(`INSERT INTO sessions(digest,user_id,purpose,expires_at,verified_at)
     SELECT ?,?,'password',${unix}+?,${unix} WHERE EXISTS (SELECT 1 FROM password_credentials WHERE user_id=? AND password_hash=? AND nickname_key=?)`)
     .bind(await digest(token),current.user_id,sessionLifetime,current.user_id,current.password_hash,key).run();
@@ -150,6 +156,7 @@ export async function updatePassword(c:ApiContext) {
   const input=await body(c);
   const password=passwordInput(input.currentPassword), next=passwordInput(input.newPassword);
   const userId=id(c), db=c.env.DB, oldSession=c.get('session').digest;
+  const unix=unixNow;
   await limit(c,'change',userId);
   const current=await db.prepare(`SELECT ${credentialFields} FROM password_credentials p WHERE p.user_id=?`).bind(userId).first<Credential>();
   if (!current || !matchesPassword(password,current)) invalid('当前密码有误。');
@@ -170,7 +177,7 @@ export async function updatePassword(c:ApiContext) {
 }
 identity.delete('/session',async c=>{
   const token=getCookie(c,sessionCookie);
-  if (token) await c.env.DB.prepare(`UPDATE sessions SET revoked_at=${unix} WHERE digest=? AND revoked_at IS NULL`).bind(await digest(token)).run();
+  if (token) await c.env.DB.prepare(`UPDATE sessions SET revoked_at=${unixNow} WHERE digest=? AND revoked_at IS NULL`).bind(await digest(token)).run();
   deleteCookie(c,sessionCookie,cookie);
   return c.json({ok:true});
 });

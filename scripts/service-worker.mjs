@@ -11,13 +11,26 @@ const paths = (await readdir(dist,{recursive:true,withFileTypes:true}))
 const hash = createHash('sha256').update(await readFile(new URL(import.meta.url)));
 for (const path of paths) hash.update(path).update(await readFile(new URL(path,dist)));
 const version = 'reading-shell-' + hash.digest('hex').slice(0,20);
+const shellHash = createHash('sha256').update(await readFile(new URL('index.html',dist))).digest('hex');
 
 await writeFile(new URL('sw.js',dist),`
 const VERSION = ${JSON.stringify(version)};
 const SHELL = '/';
-const ASSETS = new Set(${JSON.stringify(paths.map(path => path === 'index.html' ? '/' : '/' + path))});
+const SHELL_HASH = ${JSON.stringify(shellHash)};
+const ASSETS = new Set(${JSON.stringify(paths.filter(path => path !== 'index.html').map(path => '/' + path))});
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(VERSION).then(cache => cache.addAll([...ASSETS])));
+  event.waitUntil((async () => {
+    const shell = await fetch(SHELL, {cache:'reload'});
+    if (!shell.ok || shell.redirected) throw new Error('The application shell is unavailable');
+    // The new worker may arrive before the matching HTML during a rollout.
+    const digest = await crypto.subtle.digest('SHA-256', await shell.clone().arrayBuffer());
+    const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,'0')).join('');
+    if (hash !== SHELL_HASH) throw new Error('The application shell belongs to a different release');
+    const cache = await caches.open(VERSION);
+    await cache.addAll(ASSETS);
+    await cache.put(SHELL,shell);
+    await self.skipWaiting();
+  })());
 });
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
@@ -26,9 +39,6 @@ self.addEventListener('activate', event => {
     }
     await self.clients.claim();
   })());
-});
-self.addEventListener('message', event => {
-  if (event.data === 'activate') event.waitUntil(self.skipWaiting());
 });
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
