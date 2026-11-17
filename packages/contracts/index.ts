@@ -29,3 +29,12 @@ export type Home = {
 
 export type CheckInInput = { page: number; expectedRevision: number; expectedDate: string; requestId: string };
 export type CheckInResult = { record: { id: string; page: number; date: string }; book: Book };
+
+export const firstStatisticsYear = 2026;
+export type DailyTotal = { date: string; pages: number };
+export type BookHistory = Book & { checkIns: { date: string; page: number }[] };
+export type Statistics = {
+  reading: Book[];
+  completed: BookHistory[];
+  dailyTotals: DailyTotal[];
+};

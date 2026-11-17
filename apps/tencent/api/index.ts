@@ -4,6 +4,7 @@ import { friend, friendship } from './friendship';
 import { reading } from './reading';
 import { home } from './home';
 import { avatars, updateAvatar } from './avatars';
+import { statistics } from './statistics';
 
 function checkOrigin(c: ApiContext) {
   const configured = c.env.ORIGIN;
@@ -43,5 +44,6 @@ v1.use('/avatars/*',session()).route('/avatars',avatars);
 v1.use('/home/*',session()).route('/home',home);
 v1.use('/books/*',session()).route('/books',reading);
 v1.use('/friendship/*',session()).route('/friendship',friendship);
+v1.use('/statistics/*',session()).route('/statistics',statistics);
 app.route('/api/v1',v1);
 export default app;

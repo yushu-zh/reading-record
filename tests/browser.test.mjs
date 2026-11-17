@@ -174,6 +174,14 @@ test('两位读者以密码注册、绑定后直接比较，断网后手动提�
     await button(alice.page,'记录阅读页码').click();
     await dialog(alice.page).getByRole('heading',{name:'阅读打卡'}).waitFor();
     await button(alice.page,'关闭').click();
+    await button(alice.page,'统计').click();
+    await alice.page.getByRole('heading',{name:'正在阅读'}).waitFor();
+    await alice.page.getByRole('heading',{name:'已读完'}).waitFor();
+    await alice.page.locator('.bar-value').getByText('300',{exact:true}).waitFor();
+    await button(alice.page,'月').click();
+    await alice.page.locator('.bar-value').getByText('300',{exact:true}).waitFor();
+    await alice.page.getByRole('button',{name:/活着/}).click();
+    await alice.page.locator('.line-chart').waitFor();
     await button(bob.page,'我的').click();
     const settings=bob.page.getByRole('list',{name:'账号与应用'});
     assert.equal(await settings.getByRole('listitem').count(),4);
@@ -196,6 +204,79 @@ test('两位读者以密码注册、绑定后直接比较，断网后手动提�
     await button(alice.page,'登录').click();
     await shelf(alice.page,'我').getByRole('heading',{name:'三体'}).waitFor();
   } finally { await alice.context.close(); await bob.context.close(); }
+});
+
+test('阅读量按日和月分别用当前最大值缩放柱高', async()=>{
+  const {context,page}=await reader();
+  try {
+    await page.clock.setFixedTime(new Date('2026-02-01T18:00:00Z'));
+    const dailyTotals=[
+      {date:'2026-01-31',pages:100},
+      {date:'2026-02-01',pages:20},
+    ];
+    await page.route('**/api/v1/statistics',route=>route.fulfill({
+      json:{reading:[],completed:[],dailyTotals},
+    }));
+    await register(page,'柱形图读者');
+
+    const chart=page.locator('.chart-panel');
+    const bars=chart.locator('.bar');
+    async function assertHeight(pages, fraction) {
+      const bar=chart.getByTitle(`${pages} 页`,{exact:true});
+      const {height, availableHeight}=await bar.evaluate(element=>({
+        height:element.getBoundingClientRect().height,
+        availableHeight:element.parentElement.getBoundingClientRect().height,
+      }));
+      assert.ok(availableHeight>0);
+      assert.ok(Math.abs(height-availableHeight*fraction)<0.1, `${pages} 页柱高为 ${height}/${availableHeight}`);
+    }
+
+    await button(page,'统计').click();
+    await chart.getByTitle('100 页',{exact:true}).waitFor();
+    assert.equal(await button(page,'日').getAttribute('aria-pressed'),'true');
+    assert.equal(await button(page,'周').count(),0);
+    assert.equal(await button(page,'年').count(),0);
+    assert.equal(await bars.count(),30);
+    await assertHeight(100,1);
+    await assertHeight(20,0.2);
+    assert.equal(await chart.getByTitle('0 页',{exact:true}).first().isVisible(),false);
+
+    dailyTotals.push({date:'2026-02-02',pages:200});
+    await page.reload();
+    await button(page,'统计').click();
+    await chart.getByTitle('200 页',{exact:true}).waitFor();
+    await assertHeight(200,1);
+    await assertHeight(100,0.5);
+    await assertHeight(20,0.1);
+
+    await button(page,'月').click();
+    assert.equal(await bars.count(),12);
+    const months=Array.from({length:12},(_,index)=>`${index+1}月`);
+    assert.deepEqual(await chart.locator('.bar-label').allTextContents(),months);
+    await assertHeight(220,1);
+    await assertHeight(100,100/220);
+
+    const year=page.getByRole('combobox',{name:'统计年份'});
+    await page.clock.setFixedTime(new Date('2026-12-31T15:59:59Z'));
+    await button(page,'日').click();
+    assert.equal(await year.count(),0);
+    await button(page,'月').click();
+    assert.deepEqual(await year.getByRole('option').allTextContents(),['2026年']);
+
+    await page.clock.setFixedTime(new Date('2026-12-31T16:00:00Z'));
+    await page.reload();
+    await button(page,'统计').click();
+    await button(page,'月').click();
+    assert.deepEqual(await year.getByRole('option').allTextContents(),['2027年','2026年']);
+    assert.equal(await year.inputValue(),'2027');
+    assert.deepEqual(await chart.locator('.bar-label').allTextContents(),months);
+    assert.equal(await chart.getByText('暂无阅读数据').isVisible(),true);
+    await year.selectOption('2026');
+    await assertHeight(220,1);
+    await assertHeight(100,100/220);
+    await year.selectOption('2027');
+    assert.equal(await chart.getByTitle('220 页',{exact:true}).count(),0);
+  } finally { await context.close(); }
 });
 
 test('个人面板进入详情，修改昵称和密码后以新凭据登录', {timeout:30000}, async()=>{

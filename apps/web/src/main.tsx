@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useRef, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
-import type { Book, Home, Me } from '../../../packages/contracts';
+import type { Book, Home, Me, Statistics } from '../../../packages/contracts';
 import { api, DRAFT_EVENT, errorText, query, readDraft, RequestError, updateDraft, type Draft } from './api';
 import { SignIn } from './auth';
 import { BookForm, CheckForm, Feedback, Sheet } from './forms';
@@ -9,6 +9,7 @@ import { HomeView } from './home';
 import { AvatarUpload } from './avatar-upload';
 import { ProfileView } from './profile';
 import { Avatar, Icon } from './visual';
+import { StatsView } from './stats';
 import './styles.css';
 
 type Tab = 'home'|'stats'|'me';
@@ -22,7 +23,7 @@ function App() {
   useEffect(()=>{
     if (!authRequired) return;
     query.removeQueries({ queryKey:['home'] });
-    query.removeQueries({ queryKey:['books'] });
+    query.removeQueries({ queryKey:['statistics'] });
   },[authRequired]);
   return me.data && !authRequired ? <Workspace key={me.data.id} me={me.data}/>
       : authRequired ? <SignIn signedIn={()=>void me.refetch()}/>
@@ -41,10 +42,10 @@ function Workspace({me}: {me:Me}) {
   const [notice,setNotice] = useState(''), [busy,setBusy] = useState(false);
   const workspaceActive = useRef(true);
   const [visible,setVisible] = useState(()=>!document.hidden);
-  const homeKey = ['home',me.id], booksKey = ['books',me.id];
+  const homeKey = ['home',me.id], statsKey = ['statistics',me.id];
   const home = useQuery({ queryKey:homeKey, queryFn:({signal})=>api<Home>('/home','GET',undefined,signal),
     enabled:tab==='home' && visible, refetchInterval:tab==='home' && visible ? 15000 : false });
-  const books = useQuery({ queryKey:booksKey, queryFn:({signal})=>api<Book[]>('/books','GET',undefined,signal),enabled:tab==='stats' });
+  const stats = useQuery({ queryKey:statsKey, queryFn:({signal})=>api<Statistics>('/statistics','GET',undefined,signal),enabled:tab==='stats' });
   const current = home.data;
   useEffect(()=>{
     workspaceActive.current = true;
@@ -66,10 +67,10 @@ function Workspace({me}: {me:Me}) {
   },[visible,tab,me.id]);
   useEffect(()=>{
     if (home.error instanceof RequestError && home.error.status===401 ||
-        books.error instanceof RequestError && books.error.status===401) {
+        stats.error instanceof RequestError && stats.error.status===401) {
       void query.invalidateQueries({queryKey:['me']});
     }
-  },[home.error,books.error]);
+  },[home.error,stats.error]);
   useEffect(()=>{
     if (current && current.relationshipId !== (me.friend?.relationshipId ?? null)) {
       void query.invalidateQueries({ queryKey:['me'] });
@@ -94,7 +95,7 @@ function Workspace({me}: {me:Me}) {
   function saved(message='') {
     if (!workspaceActive.current) return;
     setModal(null); setNotice(message);
-    void query.invalidateQueries({queryKey:booksKey});
+    void query.invalidateQueries({queryKey:statsKey});
     if (tab === 'home') void refreshHome();
     else void query.invalidateQueries({queryKey:homeKey});
   }
@@ -129,7 +130,7 @@ function Workspace({me}: {me:Me}) {
       await api('/auth/session','DELETE');
       updateDraft(me.id,null);
       await query.cancelQueries();
-      query.removeQueries({queryKey:['home']}); query.removeQueries({queryKey:['books']});
+      query.removeQueries({queryKey:['home']}); query.removeQueries({queryKey:['statistics']});
       query.resetQueries({queryKey:['me']}).catch(()=>undefined);
     } catch (failure) { setNotice(errorText(failure)); }
     finally { setBusy(false); }
@@ -145,17 +146,11 @@ function Workspace({me}: {me:Me}) {
       {current && homeFailure && <p className="workspace-message" role="status">{homeFailure} <button className="text-button" onClick={()=>void refreshHome()}>刷新</button></p>}
       {draft && current && <button className="draft-link" onClick={()=>setModal({kind:'check',bookId:draft.bookId,draft})}>继续打卡草稿</button>}
     </>}
-    {tab==='stats' && <main className="page-view">
-      <header className="page-heading"><h1>书籍</h1><button className="icon-button accent" aria-label="新建书籍" onClick={()=>setModal({kind:'book'})}><Icon name="plus"/></button></header>
-      {books.isError && <><Feedback message={errorText(books.error)}/><button className="text-button" onClick={()=>void books.refetch()}>重试</button></>}
-      {books.isPending && <p role="status" className="muted">正在加载书籍…</p>}
-      {books.data?.length===0 && <div className="panel empty-list"><Icon name="book" size={38}/><p>还没有书籍</p><button className="text-button" onClick={()=>setModal({kind:'book'})}>新建一本书</button></div>}
-      <ul className="book-list">{books.data?.map(book=><li className="panel book-row" key={book.id}>
-        <span className="book-icon"><Icon name="book"/></span><div><strong>{book.title}</strong>
-          <p>{book.currentPage} / {book.totalPages} 页{book.completedOn ? ' · 已读完' : ''}</p></div>
-        <button className="text-button" onClick={()=>setModal({kind:'book',book})}>编辑</button>
-      </li>)}</ul>
-    </main>}
+    {tab==='stats' && <>
+      {stats.data ? <StatsView stats={stats.data} openEdit={(book)=>setModal({kind:'book',book})}/>
+        : <main className="page-view"><p role="status" className="muted">{stats.isPending ? '正在加载统计…' : errorText(stats.error)}</p>
+          {stats.isError && <button className="text-button" onClick={()=>void stats.refetch()}>重试</button>}</main>}
+    </>}
     {tab==='me' && profileOpen && <ProfileView nickname={me.nickname} back={()=>setProfileOpen(false)} updated={nicknameUpdated}/>}
     {tab==='me' && !profileOpen && <main className="page-view">
       <header className="page-heading"><h1>我的</h1></header>
@@ -183,7 +178,11 @@ function Workspace({me}: {me:Me}) {
       onClick={()=>{setTab(item.id);setProfileOpen(false);setNotice('');}}><Icon name={item.id} size={30}/><span>{item.label}</span></button>)}</nav>
     {shown?.kind==='book' && <Sheet title={shown.book ? '编辑书籍' : '新建书籍'} close={()=>setModal(null)}>
       <BookForm book={shown.book} done={()=>saved(shown.book?'书籍已更新。':'书籍已创建。')}
-        reload={async()=> (await books.refetch()).data?.find(book=>book.id===shown.book?.id)}/>
+        reload={async()=> {
+          const result = await stats.refetch();
+          return result.data?.reading.find(book=>book.id===shown.book?.id) ??
+                 result.data?.completed.find(book=>book.id===shown.book?.id);
+        }}/>
     </Sheet>}
     {shown?.kind==='check' && current && <Sheet title="阅读打卡" close={()=>setModal(null)}>
       <CheckForm snapshot={current} bookId={shown.bookId} initialDraft={shown.draft} refresh={refreshHome} done={saved}/>

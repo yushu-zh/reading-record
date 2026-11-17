@@ -64,8 +64,45 @@ test('腾讯云入口在 PostgreSQL 上登录、绑定和打卡', async () => {
     assert.equal(replayed.record.id,first.record.id);
     const {data:after} = await request('/home',{cookie:login.cookie});
     assert.deepEqual(after.friend.books[0].days,[{date:before.date,page:20}]);
+    await request('/statistics',{status:401});
+    const {data:emptyStats} = await request('/statistics',{cookie:login.cookie});
+    assert.deepEqual(emptyStats,{reading:[],completed:[],dailyTotals:[]});
+    const {data:readingStats} = await request('/statistics',{cookie:bob.cookie});
+    assert.deepEqual(readingStats.reading.map(book=>book.id),[book.id]);
+    assert.deepEqual(readingStats.dailyTotals,[{date:before.date,pages:10}]);
+
+    await request(route,{method:'POST',cookie:bob.cookie,input:{
+      ...checkIn,expectedRevision:1,page:100,requestId:randomUUID(),
+    }});
+    const {data:completedStats} = await request('/statistics',{cookie:bob.cookie});
+    assert.deepEqual(completedStats.reading,[]);
+    assert.equal(completedStats.completed[0].id,book.id);
+    assert.deepEqual(completedStats.completed[0].checkIns,[{date:before.date,page:100}]);
+    assert.deepEqual(completedStats.dailyTotals,[{date:before.date,pages:90}]);
     await request('/me/password',{method:'PATCH',cookie:login.cookie,input:{currentPassword:password,newPassword:'new-reading-password'}});
     await request('/me',{cookie:alice.cookie,status:401});
+
+    const {data:archiveBook} = await request('/books',{method:'POST',cookie:bob.cookie,
+      input:{title:'往年读过的书',totalPages:100,requestId:randomUUID()}});
+    async function setBusinessDate(date) {
+      await sql.exec('RESET ROLE');
+      await sql.exec(`CREATE OR REPLACE FUNCTION reading_record.business_date() RETURNS text
+        LANGUAGE sql STABLE AS $$ SELECT '${date}'::text $$`);
+      await sql.exec('SET ROLE service_role');
+    }
+    const archiveRoute = '/books/'+archiveBook.id+'/check-ins';
+    await setBusinessDate('2025-12-31');
+    await request(archiveRoute,{method:'POST',cookie:bob.cookie,input:{
+      expectedDate:'2025-12-31',expectedRevision:0,page:10,requestId:randomUUID(),
+    }});
+    await setBusinessDate('2026-01-01');
+    await request(archiveRoute,{method:'POST',cookie:bob.cookie,input:{
+      expectedDate:'2026-01-01',expectedRevision:1,page:40,requestId:randomUUID(),
+    }});
+    await setBusinessDate('2027-02-01');
+    const {data:archiveStats} = await request('/statistics',{cookie:bob.cookie});
+    assert.equal(archiveStats.dailyTotals.some(total=>total.date==='2025-12-31'),false);
+    assert.ok(archiveStats.dailyTotals.some(total=>total.date==='2026-01-01' && total.pages>=30));
   } finally {
     await sql.close();
   }

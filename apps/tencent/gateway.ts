@@ -51,7 +51,7 @@ export function cloudbaseDatabase(envId: string, key: string, send = fetch): Dat
   };
   return {
     prepare(sql) {
-      return new GatewayStatement(execute,{sql:sql.replaceAll('?','__rr_bind__'),values:[]});
+      return new GatewayStatement(execute,{sql:sql.trimStart().replaceAll('?','__rr_bind__'),values:[]});
     },
     batch<T>(statements: Statement[]) {
       const commands = statements.map(statement=>{

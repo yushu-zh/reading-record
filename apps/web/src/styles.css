@@ -448,4 +448,251 @@ input:focus, select:focus {
 .profile-heading { justify-content:flex-start; gap:12px; }
 .profile-form { margin-bottom:14px; padding:16px; }
 .profile-form h2 { font-size:17px; }
+
+/* Statistics View */
+.stats-view { max-width: 100%; padding-left: 16px; padding-right: 16px; }
+.stats-section { margin-bottom: 28px; }
+.stats-section-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.stats-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 12px;
+}
+.stats-section-header .stats-section-title {
+  margin: 0;
+}
+.stats-year-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.stats-year-placeholder {
+  height: 32px;
+  margin-bottom: 12px;
+}
+.year-tab {
+  min-height: 32px;
+  min-width: 56px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #8a9aa5;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: all 180ms ease;
+}
+.year-tab[aria-pressed="true"] {
+  background: #f0f4f7;
+  color: var(--accent);
+  font-weight: 650;
+}
+.year-tab[aria-pressed="false"]:hover {
+  background: #f7f9fa;
+  color: var(--accent);
+}
+.year-tab[aria-pressed="false"]:active {
+  transform: scale(0.96);
+}
+.view-mode-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--accent-soft);
+  border: 1px solid #dce5ed;
+  border-radius: 10px;
+  padding: 3px;
+}
+.view-mode-tabs button {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 650;
+  transition: all 180ms ease;
+}
+.view-mode-tabs button[aria-pressed="true"] {
+  background: var(--surface);
+  box-shadow: 0 1px 3px #25374710;
+  color: var(--button-blue);
+}
+.view-mode-tabs button[aria-pressed="false"]:hover {
+  background: #e8f0f5;
+}
+
+/* Charts */
+.chart-panel {
+  padding: 16px 16px 20px;
+  overflow-x: auto;
+  min-height: 280px;
+}
+.chart-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 32px 16px;
+  font-size: 14px;
+}
+
+/* Bar Chart */
+.bar-chart {
+  min-width: 100%;
+  width: fit-content;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.bar-chart-bars {
+  position: relative;
+  display: flex;
+  gap: clamp(8px, 2vw, 16px);
+  height: 170px;
+  padding-top: 10px;
+}
+.bar-chart-months {
+  width: 100%;
+}
+.bar-chart-months .bar-chart-bars {
+  gap: clamp(2px, 1vw, 8px);
+}
+.bar-chart-months .bar-wrapper {
+  min-width: 0;
+}
+.bar-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+.bar-wrapper {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  flex: 1;
+  min-width: 32px;
+  max-width: 52px;
+}
+.bar-container {
+  display: flex;
+  align-items: flex-end;
+}
+.bar {
+  width: 100%;
+  background: linear-gradient(180deg, #5a8ab0, var(--button-blue));
+  border-radius: 6px 6px 2px 2px;
+  position: relative;
+  box-shadow: 0 2px 6px #26374718, inset 0 1px 0 #ffffff20;
+  transition: box-shadow 240ms ease;
+}
+.bar:empty { visibility: hidden; }
+.bar:hover {
+  background: linear-gradient(180deg, #6a9ac0, var(--button-blue-deep));
+  box-shadow: 0 4px 12px #26374728;
+}
+.bar-value {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.bar-label {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Completed Books List */
+.completed-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.completed-item {
+  overflow: hidden;
+  transition: all 280ms ease;
+}
+.completed-header {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 14px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: background 200ms ease;
+}
+.completed-header:hover {
+  background: var(--accent-soft);
+}
+.completed-info {
+  flex: 1;
+  min-width: 0;
+}
+.completed-info strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.completed-info p {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.book-chart {
+  padding: 16px;
+  border-top: 1px solid var(--edge);
+  background: #fafbfc;
+  animation: expand 280ms ease;
+}
+@keyframes expand {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 400px;
+  }
+}
+
+/* Line Chart */
+.line-chart {
+  width: 100%;
+  overflow-x: auto;
+}
+.line-chart-svg {
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
 @media (max-width: 320px) { .page-marker { font-size:9px; } }
