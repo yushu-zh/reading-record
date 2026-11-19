@@ -33,25 +33,34 @@ export function Icon({ name, size = 24 }: { name:string; size?:number }) {
 }
 
 const weekdayColors = ['#FFB3C1','#FFD0A8','#FFF0A6','#C8F5C2','#BDF4EC','#BDD7FF','#E0C7FF'];
-export function progressGeometry(book: ProgressBook, weekStart: string) {
+export function progressGeometry(book: ProgressBook, weekStart: string, today: string) {
   const openingDay = Date.parse(weekStart + 'T00:00:00Z');
+  const colorForDate = (date: string) =>
+    weekdayColors[Math.round((Date.parse(date + 'T00:00:00Z') - openingDay) / 86400000)];
   let start = book.weekOpeningPage;
   const segments = [...book.days].sort((a,b) => a.date.localeCompare(b.date)).flatMap(day => {
     if (day.page <= start) return [];
-    const color = weekdayColors[Math.round((Date.parse(day.date + 'T00:00:00Z') - openingDay) / 86400000)];
-    const segment = { start, end:day.page, color };
+    const segment = { start, end:day.page, color:colorForDate(day.date) };
     start = day.page;
     return [segment];
   });
-  const markers = segments.map(s => ({ page:s.end, color:s.color }));
-  if (book.weekOpeningPage>0 && book.weekOpeningPage<book.totalPages) {
-    markers.unshift({page:book.weekOpeningPage,color:'#989b98'});
+  const todayCheckIn = book.days.find(day => day.date === today);
+  const lastSegment = segments.at(-1);
+  const currentMarker = todayCheckIn
+    ? {page:todayCheckIn.page,color:colorForDate(today)}
+    : lastSegment && {page:lastSegment.end,color:lastSegment.color};
+  const gray = '#989b98';
+  const markers = [];
+  if (book.weekOpeningPage > 0 && book.weekOpeningPage < book.totalPages && book.weekOpeningPage !== currentMarker?.page) {
+    markers.push({page:book.weekOpeningPage,color:gray});
   }
-  if (markers.at(-1)?.page !== book.totalPages) markers.push({ page:book.totalPages,color:'#989b98' });
+  if (currentMarker && (book.currentPage < book.totalPages || book.completedOn === today)) {
+    markers.push(currentMarker);
+  }
   return { segments,markers };
 }
-export function Progress({ book, weekStart, onCheck }: { book: ProgressBook; weekStart:string; onCheck?: () => void }) {
-  const { segments,markers } = progressGeometry(book,weekStart);
+export function Progress({ book, weekStart, today, onCheck }: { book: ProgressBook; weekStart:string; today:string; onCheck?: () => void }) {
+  const { segments,markers } = progressGeometry(book,weekStart,today);
   const position = (page:number) => (page / book.totalPages * 100) + '%';
   const actionStart = position(book.currentPage < book.totalPages ? book.currentPage : book.beforeToday);
   return <div className="progress-group">
@@ -69,6 +78,7 @@ export function Progress({ book, weekStart, onCheck }: { book: ProgressBook; wee
         {markers.map(marker => <span className="page-marker" key={marker.page}
           style={{ top:position(marker.page),'--marker':marker.color } as React.CSSProperties}>{marker.page}</span>)}
       </div>
+      <div className="progress-total">{book.totalPages}</div>
     </div>
   </div>;
 }

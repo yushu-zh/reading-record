@@ -165,6 +165,17 @@ test('初始已读作为灰色历史和累计下限，同一请求不得变更�
   await request('alice',path+'/check-ins','POST',{...check,page:120});
   const done=await request('alice','/books','POST',{...create,title:'已经读完',initialPage:300,requestId:randomUUID()});
   assert.equal(done.completedOn,home.date);
+  const archived=await request('alice','/books','POST',{...create,title:'上周读完',requestId:randomUUID()});
+  await runtime.sql.transaction(async tx=>{
+    await tx.exec('ALTER TABLE check_ins DISABLE TRIGGER validate_check_in');
+    await tx.query(`INSERT INTO check_ins (id,book_id,reading_date,page,expected_revision,sequence,request_id,input_digest)
+      VALUES ($1,$2,to_char($3::date-1,'YYYY-MM-DD'),300,0,1,$4,'previous-week-completion')`,
+    [randomUUID(),archived.id,home.weekStart,randomUUID()]);
+    await tx.exec('ALTER TABLE check_ins ENABLE TRIGGER validate_check_in');
+  });
+  const visibleBooks=(await request('alice','/home')).self.books;
+  assert.ok(visibleBooks.some(item=>item.id===done.id));
+  assert.ok(visibleBooks.every(item=>item.id!==archived.id));
 });
 
 test('已移除忘记密码接口',async()=>{

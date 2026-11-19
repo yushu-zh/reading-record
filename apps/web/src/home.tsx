@@ -51,7 +51,7 @@ function Shelf({ profile,label,books,home,self,unavailable,openCreate,openInvite
       <button className="arrow" aria-label={label + '的下一本书'} disabled={index < 0 || index >= entries.length-1}
         onClick={() => move(1)}><Icon name="right"/></button>
     </div>
-    {book ? <Progress key={book.id} book={book} weekStart={home.weekStart} onCheck={canCheck ? () => openCheck(book.id) : undefined}/> : <div className="shelf-empty">
+    {book ? <Progress key={book.id} book={book} weekStart={home.weekStart} today={home.date} onCheck={canCheck ? () => openCheck(book.id) : undefined}/> : <div className="shelf-empty">
       {self ? <button className="empty-action" onClick={openCreate}><span><Icon name="plus" size={32}/></span>新建书籍</button>
         : unavailable ? <p>好友进度暂不可用</p> : !profile ? <button className="empty-action" onClick={openInvite}><span><Icon name="plus" size={32}/></span>邀请好友</button>
           : <><span className="empty-symbol"><Icon name="book" size={32}/></span><p>好友暂无在读书籍</p></>}

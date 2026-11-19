@@ -173,6 +173,14 @@ test('两位读者以密码注册、绑定后直接比较，断网后手动提�
     await dialog(alice.page).waitFor({state:'hidden'});
     await shelf(alice.page,'我').locator('.progress-scale[aria-label="已读 250 / 250 页"]').waitFor();
     assert.equal((await progress.boundingBox()).height,track.height);
+    assert.deepEqual(await progress.locator('.page-marker').allTextContents(),['250']);
+    const finishedColor = await progress.locator('.segment').evaluate(node=>getComputedStyle(node).backgroundColor);
+    assert.equal(await progress.locator('.page-marker').evaluate(node=>getComputedStyle(node,'::before').borderRightColor),finishedColor);
+    const total = shelf(alice.page,'我').locator('.progress-total');
+    assert.equal(await total.textContent(),'250');
+    const totalBounds = await total.boundingBox(), finishedTrack = await progress.locator('.track').boundingBox();
+    assert.ok(totalBounds.y >= finishedTrack.y + finishedTrack.height);
+    assert.ok(Math.abs(totalBounds.x + totalBounds.width / 2 - finishedTrack.x - finishedTrack.width / 2) < 1);
     await button(alice.page,'记录阅读页码').click();
     await dialog(alice.page).getByRole('heading',{name:'阅读打卡'}).waitFor();
     await button(alice.page,'关闭').click();
@@ -326,7 +334,7 @@ test('个人面板进入详情，修改昵称和密码后以新凭据登录', {t
 });
 
 
-test('周一至周日的色块和页码箭头配色一致',async()=>{
+test('保留本周色块并标注灰色已读、最新进度和总页数',async()=>{
   const context=await browser.newContext({viewport:{width:390,height:844}});
   try {
     const page=await context.newPage();
@@ -338,7 +346,9 @@ test('周一至周日的色块和页码箭头配色一致',async()=>{
     await page.route('**/api/v1/me',route=>route.fulfill({json:{...self,friendCode:'demo',friend:{...friend,relationshipId:'pair'}}}));
     await page.route('**/api/v1/home',route=>route.fulfill({json:{
       date:'2026-11-15',serverNow:'2026-11-15T13:00:00Z',weekStart:'2026-11-09',timeZone:'Asia/Shanghai',relationshipId:'pair',
-      self:{...self,books:[book]},friend:{...friend,books:[{...book,id:'companion',title:'周末手记'}]},
+      self:{...self,books:[book]},friend:{...friend,books:[
+        {...book,id:'companion',title:'周末手记',currentPage:256,days:days.slice(0,-1)},
+      ]},
     }}));
     await page.goto(runtime.origin);
     const card=shelf(page,'我');
@@ -349,8 +359,23 @@ test('周一至周日的色块和页码箭头配色一致',async()=>{
       'rgb(255, 179, 193)','rgb(255, 208, 168)','rgb(255, 240, 166)','rgb(200, 245, 194)',
       'rgb(189, 244, 236)','rgb(189, 215, 255)','rgb(224, 199, 255)',
     ]);
-    assert.deepEqual(markers.slice(1,-1),colors);
+    assert.deepEqual(markers,['rgb(152, 155, 152)',colors.at(-1)]);
+    assert.deepEqual(await card.locator('.page-marker').allTextContents(),['40','292']);
+    assert.equal(await card.locator('.progress-total').textContent(),'345');
+    const friendMarkers=shelf(page,'朋友').locator('.page-marker');
+    assert.deepEqual(await friendMarkers.allTextContents(),['40','256']);
+    assert.equal(await friendMarkers.nth(1).evaluate(node=>getComputedStyle(node,'::before').borderRightColor),colors.at(-2));
     if (process.env.READING_TEST_PALETTE_SCREENSHOT) await page.screenshot({path:process.env.READING_TEST_PALETTE_SCREENSHOT});
+
+    book.totalPages=256;
+    book.currentPage=256;
+    book.completedOn='2026-11-14';
+    book.days=days.slice(0,-1);
+    await page.reload();
+    await card.getByRole('heading',{name:'一周阅读'}).waitFor();
+    assert.deepEqual(await card.locator('.page-marker').allTextContents(),['40']);
+    assert.equal(await card.locator('.segment').count(),6);
+    assert.equal(await card.locator('.progress-total').textContent(),'256');
   } finally { await context.close(); }
 });
 

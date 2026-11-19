@@ -141,6 +141,15 @@ h1, h2, h3, p { margin: 0; }
 .page-marker:hover { transform: translateY(-50%) translateX(2px); }
 .page-marker::before { content:""; width:0; height:0; border-block: 4px solid transparent; border-right: 7px solid var(--marker); transition: border-right-width 200ms ease; }
 .page-marker:hover::before { border-right-width: 9px; }
+.progress-total {
+  margin-top: 6px;
+  text-align: center;
+  color: var(--muted);
+  font-size: clamp(10px,3.4vw,16px);
+  line-height: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
 .shelf-empty { flex: 1; display: grid; align-content: center; justify-items: center; gap: 11px; width: 100%; text-align: center; color: var(--muted); font-size: 13px; padding: 0 8px 33px; }
 .empty-action { display: grid; justify-items: center; gap: 13px; color: var(--accent); background: transparent; border: 0; font-weight: 700; transition: all 240ms cubic-bezier(0.34, 1.56, 0.64, 1); }
 .empty-action span,.empty-symbol { display: grid; place-items:center; width: 62px; height: 62px; border-radius: 18px; background: var(--shelf-surface); border: 1px solid var(--shelf-edge); color: var(--accent); box-shadow: var(--panel-shadow); transition: all 240ms cubic-bezier(0.34, 1.56, 0.64, 1); }
